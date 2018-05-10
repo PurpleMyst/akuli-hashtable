@@ -1,6 +1,12 @@
 [package]
-name = "akuli_hashtable"
-version = "0.1.0"
 authors = ["Purple Myst <PurpleMyst@users.noreply.github.com>"]
+name = "akuli_hashtable"
+version = "1.0.0"
 
-[dependencies]
+[dev-dependencies]
+quickcheck = "0.6.2"
+quickcheck_macros = "0.6.1"
+
+[dependencies.hashtable-sys]
+path = "./hashtable-sys"
+version = "1.0.0"

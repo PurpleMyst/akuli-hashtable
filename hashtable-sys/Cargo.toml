@@ -1,0 +1,12 @@
+[package]
+authors = ["Purple Myst <PurpleMyst@users.noreply.github.com>"]
+name = "hashtable-sys"
+build = "build.rs"
+links = "hashtable"
+version = "1.0.0"
+
+[build-dependencies]
+bindgen = "0.36.1"
+cc = "1.0.15"
+
+[dependencies]
