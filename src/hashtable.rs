@@ -159,7 +159,15 @@ mod tests {
         }
 
         for i in 0..ELEMENTS {
-            assert_eq!(*hash_table.get(&(0xDEAD + i)).unwrap(), 0xBEEF + i);
+            let value = hash_table.get(&(0xDEAD + i));
+
+            assert!(
+                value == Some(&mut (0xBEEF + i)),
+                "Failed to retrieve key {:#x} after growth. (Expected {:#x}, found {:#x?}))",
+                0xDEAD + i,
+                0xBEEF + i,
+                value
+            );
         }
     }
 }
