@@ -34,11 +34,13 @@ int hashtable_set(struct HashTable *ht, void *key, unsigned int keyhash, void *v
 	try commenting out this loadfactor and make_bigger thing and running misc/hashtable_speedtest.c
 	java's 3/4 seems to be a really good choice for this value, at least on my system
 	*/
-	float loadfactor = ((float) ht->size) / ht->nbuckets;
-	if (loadfactor > 0.75) {
-		int status = make_bigger(ht);
-		if (status != STATUS_OK)
-			return status;
+	if (ht->size != UINT_MAX) {
+		float loadfactor = ((float) ht->size) / ht->nbuckets;
+		if (loadfactor > 0.75) {
+			int status = make_bigger(ht);
+			if (status != STATUS_OK)
+				return status;
+		}
 	}
 
 	unsigned int i = keyhash % ht->nbuckets;
@@ -63,12 +65,10 @@ int hashtable_set(struct HashTable *ht, void *key, unsigned int keyhash, void *v
 	item->keyhash = keyhash;
 	item->key = key;
 	item->value = value;
-	item->next = NULL;
 
 	// it's easier to insert this item before the old item
 	// i learned this from k&r
-	if (ht->buckets[i])
-		item->next = ht->buckets[i];
+	item->next = ht->buckets[i];    // may be NULL
 	ht->buckets[i] = item;
 	ht->size++;
 	return STATUS_OK;
@@ -77,20 +77,21 @@ int hashtable_set(struct HashTable *ht, void *key, unsigned int keyhash, void *v
 
 int hashtable_get(struct HashTable *ht, void *key, unsigned int keyhash, void **res, void *userdata)
 {
-	struct HashTableItem *item = ht->buckets[keyhash % ht->nbuckets];
-	if (item) {
-		for ( ; item; item=item->next) {
-			int cmpres = ht->keycmp(item->key, key, userdata);
-			assert(cmpres <= 1);
-			if (cmpres < 0)   // error
-				return cmpres;
-			if (cmpres == 1) {   // the keys are equal
-				*res = item->value;
-				return 1;    // found
-			}
+	printf("GET WITH HASH %u\n", keyhash);
+	for (struct HashTableItem *item = ht->buckets[keyhash % ht->nbuckets]; item; item=item->next) {
+		printf("ASD\n");
+		assert(ht->buckets[keyhash % ht->nbuckets]);
+		int cmpres = ht->keycmp(item->key, key, userdata);
+		assert(cmpres <= 1);
+		if (cmpres < 0)   // error
+			return cmpres;
+		if (cmpres == 1) {   // the keys are equal
+			*res = item->value;
+			printf("FOUND\n");
+			return 1;    // found
 		}
 	}
-	// empty bucket or nothing but hash collisions
+	// empty buckets or nothing but hash collisions
 	return 0;
 }
 
@@ -103,8 +104,10 @@ int hashtable_pop(struct HashTable *ht, void *key, unsigned int keyhash, void **
 		for (struct HashTableItem *item = ht->buckets[i]; item; item=item->next) {
 			int cmpres = ht->keycmp(item->key, key, userdata);
 			assert(cmpres <= 1);
-			if (cmpres < 0)   // error
+			if (cmpres < 0) {   // error
+				printf("HASHTABLE POP ERROR\n");
 				return cmpres;
+			}
 			if (cmpres == 1) {
 				// found it
 				if (res)
@@ -163,44 +166,31 @@ starthere:
 
 static int make_bigger(struct HashTable *ht)
 {
+	assert(ht->nbuckets != UINT_MAX);   // the caller should check this
+
 	size_t newnbuckets = ht->nbuckets*3;   // 50, 150, 450, ...
-	if (newnbuckets > UINT_MAX) {
-		// TODO: a better error message?
-		return STATUS_NOMEM;
-	}
+	if (newnbuckets > UINT_MAX)
+		newnbuckets = UINT_MAX;
 
-	struct HashTableItem **tmp = realloc(ht->buckets, newnbuckets * sizeof(struct HashTableItem));
-	if (!tmp)
+	printf("MAKING BIGGER: %d to %d\n", (int) ht->nbuckets, (int) newnbuckets);
+	struct HashTableItem **newbuckets = calloc(newnbuckets, sizeof(struct HashTableItem));
+	if (!newbuckets)
 		return STATUS_NOMEM;
-	memset(tmp + ht->nbuckets, 0, (newnbuckets - ht->nbuckets)*sizeof(struct HashTableItem));
-	ht->buckets = tmp;
 
-	// all items that need to be moved go to the newly allocated space
-	// not another location in the old space
 	for (size_t oldi = 0; oldi < ht->nbuckets /* old bucket count */; oldi++) {
-		struct HashTableItem *prev = NULL;
 		struct HashTableItem *next;
 		for (struct HashTableItem *item = ht->buckets[oldi]; item; item=next) {
 			next = item->next;   // must be before changing item->next
 
+			// put the item to the new bucket, same code as in hashtable_set()
 			size_t newi = item->keyhash % newnbuckets;
-			if (oldi != newi) {   // move it
-				assert(newi >= ht->nbuckets /* old bucket count */);
-				// skip the item in this bucket, same code as in hashtable_pop()
-				if (prev)
-					prev->next = item->next;
-				else
-					ht->buckets[oldi] = item->next;
-
-				// put the item to the new bucket, same code as in hashtable_set()
-				if (ht->buckets[newi])
-					item->next = ht->buckets[newi];
-				ht->buckets[newi] = item;
-			}
-			prev = item;
+			item->next = newbuckets[newi];   // may be NULL
+			ht->buckets[newi] = item;
 		}
 	}
 
+	free(ht->buckets);
+	ht->buckets = newbuckets;
 	ht->nbuckets = newnbuckets;
 	return STATUS_OK;
 }
